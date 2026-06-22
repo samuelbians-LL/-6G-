@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>3GPP 2026 会议监测台</title>
+  <style>
+    :root{
+      --bg:#07111f;--panel:#0d1b2e;--panel2:#10243d;
+      --text:#ebf4ff;--muted:#9fb2c9;--line:#23415f;
+      --blue:#4ca7ff;--cyan:#42d5d0;--orange:#ffb86b;
+      --green:#57d68d;--red:#ff7b86;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;color:var(--text);font-family:"Noto Sans SC","Microsoft YaHei",Arial,sans-serif;
+      background:
+        radial-gradient(circle at 85% -10%,rgba(76,167,255,.22),transparent 28rem),
+        radial-gradient(circle at 15% 0%,rgba(66,213,208,.12),transparent 26rem),
+        var(--bg);
+    }
+    .wrap{max-width:1240px;margin:auto;padding:36px 20px 64px}
+    .hero,.notice,.card{
+      border:1px solid var(--line);
+      background:linear-gradient(145deg,rgba(18,46,78,.96),rgba(10,24,43,.96));
+      border-radius:18px;
+    }
+    .hero{padding:30px}
+    .eyebrow{color:var(--cyan);font-size:12px;font-weight:700;letter-spacing:.12em}
+    h1{margin:8px 0 12px;font-size:clamp(28px,5vw,46px)}
+    h2{margin:28px 0 14px;font-size:21px}
+    .sub,.muted{color:var(--muted)}
+    .meta,.filters,.links,.tags{display:flex;gap:8px;flex-wrap:wrap}
+    .meta{margin-top:20px}
+    .chip,.tag,.badge{
+      padding:5px 9px;border-radius:999px;font-size:12px;
+      border:1px solid var(--line);background:rgba(8,24,43,.65);color:#cce0f4;
+    }
+    .notice{
+      display:none;margin-top:18px;padding:14px 16px;
+      border-color:rgba(255,184,107,.45);background:rgba(255,184,107,.09);
+      color:#f4ddb9;
+    }
+    .filters{margin:14px 0 18px}
+    button{
+      padding:8px 12px;border:1px solid var(--line);border-radius:999px;
+      color:#c8d8e9;background:#0b1a2d;cursor:pointer;
+    }
+    button.active,button:hover{background:#16426e;color:#fff;border-color:#3f92df}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:14px}
+    .card{padding:17px}
+    .card-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+    .title{font-weight:700;font-size:16px}
+    .date{margin:12px 0 5px;font-size:20px;font-weight:700}
+    .place,.desc{color:var(--muted);font-size:14px}
+    .desc{border-top:1px solid rgba(93,141,186,.25);margin-top:12px;padding-top:10px}
+    .tags{margin-top:12px}
+    .tag{border-radius:6px;padding:2px 6px;font-size:11px}
+    .badge.done{background:#8ee9b0;color:#07351f;border-color:#8ee9b0}
+    .badge.plan{background:#95ccff;color:#08294a;border-color:#95ccff}
+    .badge.plenary{background:#ffd49c;color:#432400;border-color:#ffd49c}
+    .badge.adhoc{background:#8aefeb;color:#073a38;border-color:#8aefeb}
+    .links{margin-top:14px}
+    .link{
+      padding:5px 9px;border:1px solid rgba(128,196,255,.4);
+      border-radius:7px;color:#9dd2ff;text-decoration:none;font-size:12px;
+      background:rgba(76,167,255,.08);
+    }
+    .link:hover{background:rgba(76,167,255,.22);color:#fff}
+    footer{margin-top:30px;padding-top:18px;border-top:1px solid var(--line);color:var(--muted);font-size:12px}
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <section class="hero">
+      <div class="eyebrow">3GPP · SEMI-AUTOMATED MEETING MONITOR</div>
+      <h1>2026 年 SA / RAN 会议监测台</h1>
+      <p class="sub">
+        覆盖 SA1、SA2、RAN1–RAN4 与 RAN 全会。网页只展示经过人工审核并发布的数据；
+        自动监测结果会进入待核验清单，不会直接覆盖正式页面。
+      </p>
+      <div class="meta">
+        <span class="chip" id="lastPublished">已发布数据：加载中</span>
+        <span class="chip" id="lastChecked">最近检查：加载中</span>
+        <span class="chip">时区：会议举办地当地时间</span>
+      </div>
+    </section>
+
+    <section class="notice" id="pendingNotice"></section>
+
+    <h2>会议时间轴</h2>
+    <div class="filters">
+      <button class="active" data-filter="all">全部</button>
+      <button data-filter="WG">工作组</button>
+      <button data-filter="PLENARY">全会</button>
+      <button data-filter="ADHOC">Ad Hoc</button>
+      <button data-filter="done">已结束</button>
+      <button data-filter="future">未来会议</button>
+    </div>
+
+    <section class="grid" id="meetingGrid"></section>
+
+    <footer>
+      <strong>解读边界：</strong>
+      会议计划、地点、日期与资料链接来自 3GPP 官方公开会议页。TDoc 是成员书面输入，
+      不代表工作组共识或正式批准。正式状态应以会议报告、主席结论、全会批准记录、
+      Work Item / Study Item 状态及 TR/TS 版本为准。
+    </footer>
+  </main>
+
+  <script>
+    let meetings = [];
+    let activeFilter = "all";
+
+    const groupLabels = {
+      S1:"SA1", S2:"SA2", R1:"RAN1", R2:"RAN2",
+      R3:"RAN3", R4:"RAN4", RP:"RAN Plenary"
+    };
+
+    function formatDate(dateString) {
+      return new Intl.DateTimeFormat("zh-CN", {
+        year:"numeric", month:"long", day:"numeric"
+      }).format(new Date(dateString + "T00:00:00"));
+    }
+
+    function getMeetingKind(meeting) {
+      if (meeting.kind === "PLENARY") return "plenary";
+      if (meeting.kind === "ADHOC") return "adhoc";
+      return meeting.end < new Date().toISOString().slice(0,10) ? "done" : "plan";
+    }
+
+    function buildLinks(meeting) {
+      if (meeting.end >= new Date().toISOString().slice(0,10)) {
+        return `<a class="link" target="_blank" rel="noopener" href="${meeting.index_url}">官方会议索引</a>`;
+      }
+
+      const links = [];
+      links.push(`<a class="link" target="_blank" rel="noopener" href="${meeting.details_url}">会议详情</a>`);
+      if (meeting.report_url) {
+        links.push(`<a class="link" target="_blank" rel="noopener" href="${meeting.report_url}">会议报告</a>`);
+      }
+      if (meeting.tdoc_url) {
+        links.push(`<a class="link" target="_blank" rel="noopener" href="${meeting.tdoc_url}">输入文稿</a>`);
+      }
+      if (meeting.files_url) {
+        links.push(`<a class="link" target="_blank" rel="noopener" href="${meeting.files_url}">原始文件</a>`);
+      }
+      return links.join("");
+    }
+
+    function render() {
+      const now = new Date().toISOString().slice(0,10);
+
+      const list = meetings.filter(m => {
+        if (activeFilter === "all") return true;
+        if (activeFilter === "done") return m.end < now;
+        if (activeFilter === "future") return m.end >= now;
+        return m.kind === activeFilter;
+      });
+
+      document.getElementById("meetingGrid").innerHTML = list.map(m => {
+        const state = getMeetingKind(m);
+        const badgeText =
+          m.kind === "PLENARY" ? "全会" :
+          m.kind === "ADHOC" ? "专项 Ad Hoc" :
+          m.end < now ? "已结束" : "计划";
+
+        return `
+          <article class="card">
+            <div class="card-head">
+              <div class="title">${m.title}</div>
+              <span class="badge ${state}">${badgeText}</span>
+            </div>
+            <div class="date">${formatDate(m.start)} – ${formatDate(m.end)}</div>
+            <div class="place">${m.city || "地点待确认"}</div>
+            <div class="desc">${m.description || "会议计划与官方资料入口。"}</div>
+            <div class="tags">
+              <span class="tag">${groupLabels[m.group] || m.group}</span>
+              <span class="tag">${m.meeting_id}</span>
+            </div>
+            <div class="links">${buildLinks(m)}</div>
+          </article>`;
+      }).join("");
+    }
+
+    async function loadData() {
+      const [published, pending] = await Promise.all([
+        fetch("./data/published_meetings.json").then(r => r.json()),
+        fetch("./data/pending_updates.json").then(r => r.json()).catch(() => ({count:0}))
+      ]);
+
+      meetings = published.meetings.sort((a,b) => a.start.localeCompare(b.start));
+      document.getElementById("lastPublished").textContent =
+        `已发布数据：${published.published_at || "未标记"}`;
+      document.getElementById("lastChecked").textContent =
+        `最近自动检查：${published.last_checked_at || "未执行"}`;
+
+      if (pending.count > 0) {
+        const notice = document.getElementById("pendingNotice");
+        notice.style.display = "block";
+        notice.innerHTML =
+          `<strong>待人工核验：</strong>发现 ${pending.count} 项可能变化。` +
+          `这些变化尚未发布到正式会议时间轴。`;
+      }
+
+      render();
+    }
+
+    document.querySelectorAll("button[data-filter]").forEach(button => {
+      button.addEventListener("click", () => {
+        activeFilter = button.dataset.filter;
+        document.querySelectorAll("button[data-filter]").forEach(b => b.classList.remove("active"));
+        button.classList.add("active");
+        render();
+      });
+    });
+
+    loadData().catch(error => {
+      document.getElementById("meetingGrid").innerHTML =
+        `<p class="muted">无法加载会议数据：${error.message}</p>`;
+    });
+  </script>
+</body>
+</html>
