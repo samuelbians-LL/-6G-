@@ -1,0 +1,42 @@
+name: Check 3GPP meeting changes
+
+on:
+  schedule:
+    - cron: "0 0 * * *"   # 每天台湾时间 08:00
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install requests beautifulsoup4
+
+      - name: Check official 3GPP meeting pages
+        run: python scripts/check_3gpp_meetings.py
+
+      - name: Create pull request for review
+        uses: peter-evans/create-pull-request@v7
+        with:
+          commit-message: "chore: check 3GPP meeting updates"
+          title: "待核验：3GPP 会议计划变化"
+          body: |
+            自动监测到 3GPP 官方公开会议页可能有变化。
+            请检查 data/pending_updates.json。
+            审核后可在本 PR 内运行或本地运行：
+            python scripts/approve_updates.py --all
+          branch: automated/3gpp-meeting-review
+          delete-branch: true
